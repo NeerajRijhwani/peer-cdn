@@ -121,10 +121,12 @@ func decodeString(data io.Reader,firstbyte byte)(string,error){
 
 func Encode(w io.Writer,val BencodeValue)error{
 	switch v := val.(type) {
-		case int:
+		case int,int64:
 			return encodeInt(w,v)
 		case string:
 			return encodeString(w,v)
+		case []byte:
+			return encodeByte(w,v)
 		case []BencodeValue:
 			return encodeList(w,v)
 		case map[string]BencodeValue:
@@ -132,6 +134,15 @@ func Encode(w io.Writer,val BencodeValue)error{
 		default:
 			return fmt.Errorf("unsupported type: %T", v)
 	}
+}
+
+func encodeByte(w io.Writer,val []byte)error{
+	_,err:=fmt.Fprintf(w, "%d:", len(val))
+	if err != nil {
+            return err
+        }
+        _, err = w.Write(val)
+	return err
 }
 
 func encodeInt(w io.Writer,val interface{}) error{
