@@ -25,3 +25,12 @@ type ErrorResponse struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
 }
+
+type File struct {
+	Info_hash    string `db:"info_hash"`
+	File_name    string `db:"file_name"`
+	Total_size   int64  `db:"total_size"`
+	Piece_length int    `db:"piece_length"`
+	Origin_url   string `db:"origin_url"`
+	Is_active    bool   `db:"is_active"`
+}

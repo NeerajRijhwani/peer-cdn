@@ -18,12 +18,13 @@ const (
 	// Maximum peers to return
 	MaxPeersReturned = 50
 )
+
 type Manager struct {
 	redis  *redis.Client
 	logger *zap.Logger
 }
 
-//Initialize new manager
+// Initialize new manager
 func NewManager(redisClient *redis.Client, logger *zap.Logger) *Manager {
 	return &Manager{
 		redis:  redisClient,
@@ -31,7 +32,7 @@ func NewManager(redisClient *redis.Client, logger *zap.Logger) *Manager {
 	}
 }
 
-//Store peers in redis 
+// Store peers in redis
 func (m *Manager) StorePeer(ctx context.Context, peer *storage.PeerInfo) error {
 
 	key := fmt.Sprintf("peer:%s:%s", peer.InfoHash, peer.PeerID)
@@ -39,10 +40,10 @@ func (m *Manager) StorePeer(ctx context.Context, peer *storage.PeerInfo) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal peer: %w", err)
 	}
-	if err:=m.redis.Set(ctx,key,data,PeerTTL).Err(); err != nil {
+	if err := m.redis.Set(ctx, key, data, PeerTTL).Err(); err != nil {
 		return fmt.Errorf("failed to store peer in Redis: %w", err)
 	}
-	
+
 	m.logger.Debug("stored peer",
 		zap.String("info_hash", peer.InfoHash),
 		zap.String("peer_id", peer.PeerID),
@@ -50,18 +51,31 @@ func (m *Manager) StorePeer(ctx context.Context, peer *storage.PeerInfo) error {
 	return nil
 }
 
-//get peers with excluding the user peer
-func (m *Manager) GetPeers(ctx context.Context,infoHash string, excludePeerID string) ([]storage.PeerInfo, error) {
-	pattern:=fmt.Sprintf("peer:%s:*",infoHash)
+func (m *Manager) GetCurrentPeer(ctx context.Context, peerid, infoHash string) (storage.PeerInfo, error) {
+	pattern := fmt.Sprintf("peer:%s:%s", infoHash, peerid)
+	value, err := m.redis.Get(ctx, pattern).Result()
+	if err == redis.Nil {
+		return storage.PeerInfo{}, err
+	}
+	var peer storage.PeerInfo
+	if err := json.Unmarshal([]byte(value), &peer); err != nil {
+		return storage.PeerInfo{}, err
+	}
+	return peer, nil
+}
+
+// get peers with excluding the user peer
+func (m *Manager) GetPeers(ctx context.Context, infoHash string, excludePeerID string) ([]storage.PeerInfo, error) {
+	pattern := fmt.Sprintf("peer:%s:*", infoHash)
 	keys, err := m.redis.Keys(ctx, pattern).Result()
-	if err!=nil{
-		return nil,fmt.Errorf("failed to get peer keys: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get peer keys: %w", err)
 	}
 	var peers []storage.PeerInfo
-	for _,key :=range(keys){
+	for _, key := range keys {
 		data, err := m.redis.Get(ctx, key).Result()
-		if err!=nil{
-			
+		if err != nil {
+
 			m.logger.Warn("failed to get peer data", zap.String("key", key), zap.Error(err))
 			continue
 		}
@@ -70,7 +84,7 @@ func (m *Manager) GetPeers(ctx context.Context,infoHash string, excludePeerID st
 			m.logger.Warn("failed to unmarshal peer", zap.Error(err))
 			continue
 		}
-		if peer.PeerID!=excludePeerID{
+		if peer.PeerID != excludePeerID {
 			peers = append(peers, peer)
 		}
 		if len(peers) >= MaxPeersReturned {
@@ -80,19 +94,19 @@ func (m *Manager) GetPeers(ctx context.Context,infoHash string, excludePeerID st
 	return peers, nil
 }
 
-//remove a peer from redis 
+// remove a peer from redis
 func (m *Manager) RemovePeer(ctx context.Context, infoHash, peerID string) error {
-	key:=fmt.Sprintf("peer:%s:%s",infoHash,peerID)
-	if _,err:=m.redis.Del(ctx,key).Result(); err!=nil{
+	key := fmt.Sprintf("peer:%s:%s", infoHash, peerID)
+	if _, err := m.redis.Del(ctx, key).Result(); err != nil {
 		return fmt.Errorf("failed to remove peer: %w", err)
 	}
 	return nil
 }
 
-// Get swarm size of peers connected 
+// Get swarm size of peers connected
 func (m *Manager) GetSwarmSize(ctx context.Context, infoHash string) (int, error) {
 	pattern := fmt.Sprintf("peer:%s:*", infoHash)
-	
+
 	keys, err := m.redis.Keys(ctx, pattern).Result()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get swarm size: %w", err)
